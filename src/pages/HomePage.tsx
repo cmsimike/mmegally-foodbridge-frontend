@@ -58,7 +58,7 @@ const HomePage = () => {
                 variant="text" 
                 size="small"
                 color="primary"
-                onClick={() => navigate('/good-samaritan-law')}
+                onClick={() => navigate('/donor/good-samaritan-law')}
                 sx={{ ml: 1, textTransform: 'none', fontWeight: 'bold' }}
               >
                 Learn more
