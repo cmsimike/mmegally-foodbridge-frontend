@@ -7,6 +7,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import HomePage from './pages/HomePage';
 import GoodSamaritanLawPage from './pages/GoodSamaritanLawPage';
 
+
 // Create basic theme
 const theme = createTheme({
   palette: {
@@ -29,10 +30,6 @@ function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<HomePage />} />
-              <Route path="/donor/login" element={<div>Donor Login Page (Coming Soon)</div>} />
-              <Route path="/donor/register" element={<div>Donor Registration Page (Coming Soon)</div>} />
-              <Route path="/donor/dashboard" element={<div>Donor Dashboard (Coming Soon)</div>} />
-              <Route path="/browse" element={<div>Browse Food Items (Coming Soon)</div>} />
               <Route path="/donor/good-samaritan-law" element={<GoodSamaritanLawPage />} />
             </Routes>
           </BrowserRouter>
