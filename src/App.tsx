@@ -6,10 +6,11 @@ import CssBaseline from '@mui/material/CssBaseline';
 // Import pages
 import HomePage from './pages/HomePage';
 import GoodSamaritanLawPage from './pages/GoodSamaritanLawPage';
+import DonorRegistrationPage from './pages/Donor/RegistrationPage';
 import DonorLoginPage from './pages/Donor/LoginPage';
 import DonorDashboardPage from './pages/Donor/DashboardPage';
 import DonorStoreListingPage from './pages/Donor/StoreListingPage';
-
+import BrowseFoodItemsPage from './pages/Donor/StoreListingPage';
 
 
 // Create basic theme
@@ -34,10 +35,12 @@ function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<HomePage />} />
-              <Route path="/donor/good-samaritan-law" element={<GoodSamaritanLawPage />} />
               <Route path="/donor/login" element={< DonorLoginPage />} />
+              <Route path="/donor/register" element={<DonorRegistrationPage />} />
+              <Route path="/donor/good-samaritan-law" element={<GoodSamaritanLawPage />} />
               <Route path="/donor/dashboard" element={<DonorDashboardPage />} />
               <Route path="/donor/store/:storeId" element={<DonorStoreListingPage />} />
+              <Route path="/browse" element={<BrowseFoodItemsPage />} />
             </Routes>
           </BrowserRouter>
         </div>

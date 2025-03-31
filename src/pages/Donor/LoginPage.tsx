@@ -8,18 +8,23 @@ import {
   Button, 
   Grid,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Snackbar
 } from '@mui/material';
 import RestaurantIcon from '@mui/icons-material/Restaurant';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 
-// Import API client (assuming you'll set this up separately)
-// import { api } from '../api/client';
+// Import API client
+import { Api } from '../../services/Api';
+
+// Initialize API client
+const api = new Api({ baseUrl: 'http://localhost:5266' });
 
 const DonorLoginPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showSuccess, setShowSuccess] = useState(false);
   
   // Form states
   const [username, setUsername] = useState('');
@@ -37,23 +42,60 @@ const DonorLoginPage = () => {
     setError('');
     
     try {
-      // In a real implementation, you would use your API client like:
-      // await api.donorLoginCreate({ username, password });
+      // Call the API to login donor
+      const response = await api.api.donorLoginCreate({ 
+        username, 
+        password 
+      }, {
+        format: 'json'
+      });
       
-      // For now, let's simulate API call with a timeout
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Store token in localStorage (in a real app)
-      // localStorage.setItem('token', response.token);
-      
-      // Navigate to donor dashboard after successful login
-      navigate('/donor/dashboard');
+      if (response) {
+        if (response.ok) {
+          console.log('Login successful');
+          const data = await response.json();
+          const token = data.token;
+          
+          // Store token in localStorage for future use
+          localStorage.setItem('authToken', token);
+          localStorage.setItem('username', username);
+          
+          // Set authorization header for all future API calls
+          api.setSecurityData(token);
+          
+          setShowSuccess(true);
+          
+          // Navigate to donor dashboard after successful login
+          setTimeout(() => {
+            navigate('/donor/dashboard');
+          }, 1000);
+        } else {
+          // Handle non-ok responses
+          if (response.status === 401) {
+            setError('Invalid username or password');
+          } else {
+            setError('Login failed. Please try again later.');
+          }
+        }
+      }
     } catch (err) {
-      setError('Login failed. Please check your credentials and try again.');
-      console.error(err);
+      console.error('Login error:', err);
+      
+      // Different error handling based on error response
+      if (err.status === 401) {
+        setError('Invalid username or password');
+      } else if (err.status === 404) {
+        setError('User not found');
+      } else {
+        setError('Login failed. Please check your credentials and try again.');
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCloseSuccessMessage = () => {
+    setShowSuccess(false);
   };
 
   return (
@@ -148,6 +190,14 @@ const DonorLoginPage = () => {
           </Button>
         </Box>
       </Paper>
+
+      {/* Success message snackbar */}
+      <Snackbar
+        open={showSuccess}
+        autoHideDuration={3000}
+        onClose={handleCloseSuccessMessage}
+        message="Login successful"
+      />
     </Box>
   );
 };

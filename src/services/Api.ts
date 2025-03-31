@@ -72,7 +72,7 @@ export interface RegisterDonorRequest {
    * @minLength 3
    * @maxLength 50
    */
-  password: string;
+  token: string;
 }
 
 export interface RegisterStoreRequest {
