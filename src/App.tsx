@@ -10,7 +10,7 @@ import DonorRegistrationPage from './pages/Donor/RegistrationPage';
 import DonorLoginPage from './pages/Donor/LoginPage';
 import DonorDashboardPage from './pages/Donor/DashboardPage';
 import DonorStoreListingPage from './pages/Donor/StoreListingPage';
-import BrowseFoodItemsPage from './pages/Donor/StoreListingPage';
+import FoodSearchPage from './pages/FoodSearchPage';
 
 
 // Create basic theme
@@ -40,7 +40,7 @@ function App() {
               <Route path="/donor/good-samaritan-law" element={<GoodSamaritanLawPage />} />
               <Route path="/donor/dashboard" element={<DonorDashboardPage />} />
               <Route path="/donor/store/:storeId" element={<DonorStoreListingPage />} />
-              <Route path="/browse" element={<BrowseFoodItemsPage />} />
+              <Route path="/browse" element={<FoodSearchPage />} />
             </Routes>
           </BrowserRouter>
         </div>
