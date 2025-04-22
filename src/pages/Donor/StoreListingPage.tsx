@@ -37,8 +37,23 @@ import ArchiveIcon from '@mui/icons-material/Archive';
 import QrCodeIcon from '@mui/icons-material/QrCode';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
-// Import API client (assuming you'll set this up separately)
-// import { api } from '../api/client';
+// Import API client
+import { Api } from '../../services/Api';
+
+// Initialize API client with security configuration
+const api = new Api({
+  baseUrl: 'http://localhost:5266',
+  securityWorker: (token) => {
+    if (token) {
+      return {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      };
+    }
+    return {};
+  }
+});
 
 // Helper function to format dates
 const formatDate = (date) => {
@@ -55,70 +70,6 @@ const formatDate = (date) => {
 // Helper function to check if a date is in the future
 const isDateInFuture = (date) => {
   return new Date(date) > new Date();
-};
-
-// Mock data for demonstration
-const mockFoodItems = [
-  {
-    id: '1',
-    name: 'Fresh Bread',
-    description: 'Assorted bread and pastries',
-    expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-    createdAt: new Date(),
-    isClaimed: false,
-    claimCode: null,
-    storeId: '123'
-  },
-  {
-    id: '2',
-    name: 'Fruit Selection',
-    description: 'Apples, bananas, and oranges',
-    expirationDate: new Date(Date.now() + 48 * 60 * 60 * 1000), // Day after tomorrow
-    createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000), // 12 hours ago
-    isClaimed: true,
-    claimCode: 'ABC123',
-    storeId: '123'
-  },
-  {
-    id: '3',
-    name: 'Prepared Meals',
-    description: 'Assorted prepared meals that were not sold today',
-    expirationDate: new Date(Date.now() + 12 * 60 * 60 * 1000), // 12 hours from now
-    createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
-    isClaimed: false,
-    claimCode: null,
-    storeId: '123'
-  },
-  {
-    id: '4',
-    name: 'Sandwich Platters',
-    description: 'Assorted sandwich platters from catering',
-    expirationDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday (expired)
-    createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000), // 2 days ago
-    isClaimed: false,
-    claimCode: null,
-    storeId: '123'
-  },
-  {
-    id: '5',
-    name: 'Salad Mix',
-    description: 'Fresh garden salad mix',
-    expirationDate: new Date(Date.now() + 36 * 60 * 60 * 1000), // 1.5 days from now
-    createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
-    isClaimed: true,
-    claimCode: 'XYZ789',
-    storeId: '123',
-    pickedUp: true
-  }
-];
-
-const mockStore = {
-  id: '123',
-  name: 'Good Food Restaurant',
-  latitude: 37.7749,
-  longitude: -122.4194,
-  createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
-  donorId: 'user123'
 };
 
 const DonorStoreListingPage = () => {
@@ -153,51 +104,69 @@ const DonorStoreListingPage = () => {
 
   // Filter food items based on tab
   const getFilteredItems = () => {
-    const now = new Date();
-    
     if (tabValue === 0) {
-      // Active (not claimed, not expired)
-      return allFoodItems.filter(item => 
-        !item.isClaimed && isDateInFuture(item.expirationDate)
+      // Available: not claimed, no claim code, not expired
+      return allFoodItems.filter(item =>
+        !item.isClaimed && !item.claimCode && isDateInFuture(item.expirationDate)
       );
     } else if (tabValue === 1) {
-      // Claimed but not picked up
-      return allFoodItems.filter(item => 
-        item.isClaimed && 
-        item.claimCode && 
-        !item.pickedUp && 
-        isDateInFuture(item.expirationDate)
+      // Claimed but not picked up: not claimed (picked up), has claim code, not expired
+      return allFoodItems.filter(item =>
+        !item.isClaimed && item.claimCode && isDateInFuture(item.expirationDate)
       );
     } else {
-      // Expired or claimed and picked up
-      return allFoodItems.filter(item => 
-        !isDateInFuture(item.expirationDate) || 
-        (item.isClaimed && item.pickedUp)
+      // Archived: either claimed and picked up or expired
+      return allFoodItems.filter(item =>
+        item.isClaimed || !isDateInFuture(item.expirationDate)
       );
     }
   };
 
   useEffect(() => {
+    // Check if token exists
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      navigate('/donor/login');
+      return;
+    }
+
+    // Set token for API calls
+    api.setSecurityData(token);
+
     // Fetch donor store and food items
     const fetchData = async () => {
       try {
-        // In a real implementation, you would use your API client like:
-        // const storeData = await api.donorStoreList();
-        // setStore(storeData);
+        setLoading(true);
         
-        // Mock data for demonstration
-        setStore(mockStore);
-        setAllFoodItems(mockFoodItems);
+        // Get store data from API
+        const storeResponse = await api.api.donorStoreList({
+          secure: true,
+          format: 'json'
+        });
+        
+        if (storeResponse.ok) {
+          const storeData = await storeResponse.json();
+          setStore(storeData);
+          
+          // Process food items from the store data
+          if (storeData.foodItems && Array.isArray(storeData.foodItems)) {
+            setAllFoodItems(storeData.foodItems);
+          } else {
+            setAllFoodItems([]);
+          }
+        } else {
+          setError('Failed to load store data. Please try again later.');
+        }
       } catch (err) {
+        console.error('Failed to load data:', err);
         setError('Failed to load data. Please try again later.');
-        console.error(err);
       } finally {
         setLoading(false);
       }
     };
     
     fetchData();
-  }, [storeId]);
+  }, [navigate]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -223,57 +192,49 @@ const DonorStoreListingPage = () => {
     }
     
     try {
-      // In a real implementation, you would use your API client like:
-      // const data = {
-      //   ...newItem,
-      //   storeId: store.id,
-      //   createdAt: new Date()
-      // };
-      // const result = await api.donorFoodCreate(data);
-      
-      // Mock adding the item
-      const newItemWithId = {
-        ...newItem,
-        id: Date.now().toString(),
-        storeId: store.id,
-        createdAt: new Date(),
-        isClaimed: false,
-        claimCode: null,
-        expirationDate: new Date(newItem.expirationDate) // Convert string to Date object
+      // Create the food item data
+      const foodItemData = {
+        name: newItem.name,
+        description: newItem.description || '',
+        expirationDate: new Date(newItem.expirationDate).toISOString(),
+        storeId: store.id
       };
       
-      setAllFoodItems([newItemWithId, ...allFoodItems]);
-      setNewItem({
-        name: '',
-        description: '',
-        expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().substring(0, 16)
+      // Call the API to create food item
+      const response = await api.api.donorFoodCreate(foodItemData, {
+        secure: true,
+        format: 'json'
       });
       
-      setSnackbar({
-        open: true,
-        message: 'Food item added successfully',
-        severity: 'success'
-      });
+      if (response.ok) {
+        const newFoodItem = await response.json();
+        
+        // Add new item to the food items array
+        setAllFoodItems([newFoodItem, ...allFoodItems]);
+        
+        // Reset form
+        setNewItem({
+          name: '',
+          description: '',
+          expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().substring(0, 16)
+        });
+        
+        setSnackbar({
+          open: true,
+          message: 'Food item added successfully',
+          severity: 'success'
+        });
+      } else {
+        throw new Error('Failed to add food item');
+      }
     } catch (err) {
+      console.error('Error adding food item:', err);
       setSnackbar({
         open: true,
         message: 'Failed to add food item',
         severity: 'error'
       });
-      console.error(err);
     }
-  };
-
-  const handleDeleteFoodItem = (id) => {
-    // In a real implementation, you would call your API
-    // For now, just filter out the item
-    setAllFoodItems(allFoodItems.filter(item => item.id !== id));
-    
-    setSnackbar({
-      open: true,
-      message: 'Food item removed',
-      severity: 'success'
-    });
   };
 
   const handleShowQrCode = (id, claimCode) => {
@@ -291,17 +252,38 @@ const DonorStoreListingPage = () => {
     });
   };
 
-  const handleMarkAsPickedUp = (id) => {
-    // In a real implementation, you would call your API
-    setAllFoodItems(allFoodItems.map(item => 
-      item.id === id ? { ...item, pickedUp: true } : item
-    ));
-    
-    setSnackbar({
-      open: true,
-      message: 'Item marked as picked up',
-      severity: 'success'
-    });
+  const handleMarkAsPickedUp = async (id) => {
+    try {
+      // Call the API to mark the item as picked up
+      const response = await api.api.donorFoodMarkPickedUpCreate(id, {
+        secure: true,
+        format: 'json'
+      });
+      
+      if (response.ok) {
+        const updatedItem = await response.json();
+        
+        // Update the item in the UI
+        setAllFoodItems(allFoodItems.map(item => 
+          item.id === id ? updatedItem : item
+        ));
+        
+        setSnackbar({
+          open: true,
+          message: 'Item marked as picked up',
+          severity: 'success'
+        });
+      } else {
+        throw new Error('Failed to mark item as picked up');
+      }
+    } catch (err) {
+      console.error('Failed to mark item as picked up:', err);
+      setSnackbar({
+        open: true,
+        message: 'Failed to mark item as picked up',
+        severity: 'error'
+      });
+    }
   };
 
   const handleCloseSnackbar = () => {
@@ -312,28 +294,19 @@ const DonorStoreListingPage = () => {
   };
   
   const getTabLabel = (index) => {
-    const now = new Date();
-    
     if (index === 0) {
-      // Count active items
-      const count = allFoodItems.filter(item => 
-        !item.isClaimed && isDateInFuture(item.expirationDate)
+      const count = allFoodItems.filter(item =>
+        !item.isClaimed && !item.claimCode && isDateInFuture(item.expirationDate)
       ).length;
       return `Active (${count})`;
     } else if (index === 1) {
-      // Count claimed but not picked up
-      const count = allFoodItems.filter(item => 
-        item.isClaimed && 
-        item.claimCode && 
-        !item.pickedUp && 
-        isDateInFuture(item.expirationDate)
+      const count = allFoodItems.filter(item =>
+        !item.isClaimed && item.claimCode && isDateInFuture(item.expirationDate)
       ).length;
       return `Pending Pickup (${count})`;
     } else {
-      // Count expired or claimed and picked up
-      const count = allFoodItems.filter(item => 
-        !isDateInFuture(item.expirationDate) || 
-        (item.isClaimed && item.pickedUp)
+      const count = allFoodItems.filter(item =>
+        item.isClaimed || !isDateInFuture(item.expirationDate)
       ).length;
       return `Archive (${count})`;
     }
@@ -484,30 +457,14 @@ const DonorStoreListingPage = () => {
                           <Typography variant="h6" component="h2" gutterBottom>
                             {item.name}
                           </Typography>
-                          {item.isClaimed && item.pickedUp ? (
-                            <Chip 
-                              label="Picked Up" 
-                              color="default" 
-                              size="small"
-                            />
+                          {!item.isClaimed && !item.claimCode && isDateInFuture(item.expirationDate) ? (
+                            <Chip label="Available" color="primary" size="small" />
+                          ) : !item.isClaimed && item.claimCode && isDateInFuture(item.expirationDate) ? (
+                            <Chip label="Claimed" color="secondary" size="small" />
                           ) : item.isClaimed ? (
-                            <Chip 
-                              label="Claimed" 
-                              color="secondary" 
-                              size="small"
-                            />
-                          ) : !isDateInFuture(item.expirationDate) ? (
-                            <Chip 
-                              label="Expired" 
-                              color="error" 
-                              size="small"
-                            />
+                            <Chip label="Picked Up" color="default" size="small" />
                           ) : (
-                            <Chip 
-                              label="Available" 
-                              color="primary" 
-                              size="small"
-                            />
+                            <Chip label="Expired" color="error" size="small" />
                           )}
                         </Box>
                         
@@ -529,39 +486,28 @@ const DonorStoreListingPage = () => {
                           )}
                         </Box>
                       </CardContent>
-                      <CardActions>
-                        {tabValue === 0 && (
+                      
+                      {/* Only show action buttons for pending pickup tab */}
+                      {tabValue === 1 && (
+                        <CardActions>
                           <Button
                             size="small"
-                            color="error"
-                            startIcon={<DeleteOutlineIcon />}
-                            onClick={() => handleDeleteFoodItem(item.id)}
+                            color="primary"
+                            startIcon={<QrCodeIcon />}
+                            onClick={() => handleShowQrCode(item.id, item.claimCode)}
+                            sx={{ mr: 1 }}
                           >
-                            Remove
+                            Show Code
                           </Button>
-                        )}
-                        
-                        {tabValue === 1 && (
-                          <>
-                            <Button
-                              size="small"
-                              color="primary"
-                              startIcon={<QrCodeIcon />}
-                              onClick={() => handleShowQrCode(item.id, item.claimCode)}
-                              sx={{ mr: 1 }}
-                            >
-                              Show QR
-                            </Button>
-                            <Button
-                              size="small"
-                              color="secondary"
-                              onClick={() => handleMarkAsPickedUp(item.id)}
-                            >
-                              Mark Picked Up
-                            </Button>
-                          </>
-                        )}
-                      </CardActions>
+                          <Button
+                            size="small"
+                            color="secondary"
+                            onClick={() => handleMarkAsPickedUp(item.id)}
+                          >
+                            Mark Picked Up
+                          </Button>
+                        </CardActions>
+                      )}
                     </Card>
                   </Grid>
                 ))}
@@ -571,26 +517,10 @@ const DonorStoreListingPage = () => {
         </Paper>
       </Container>
 
-      {/* QR Code Dialog */}
       <Dialog open={qrDialog.open} onClose={handleCloseQrDialog} maxWidth="xs" fullWidth>
-        <DialogTitle>Claim QR Code</DialogTitle>
+        <DialogTitle>Claim Code</DialogTitle>
         <DialogContent>
           <Box sx={{ textAlign: 'center', py: 2 }}>
-            {/* In a real implementation, you would generate a QR code here */}
-            <Box
-              sx={{
-                width: 200,
-                height: 200,
-                margin: '0 auto',
-                border: '1px solid #ccc',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                mb: 2
-              }}
-            >
-              <QrCodeIcon sx={{ fontSize: 100, color: 'text.secondary' }} />
-            </Box>
             
             <Typography variant="h6" gutterBottom>
               Claim Code: {qrDialog.claimCode}

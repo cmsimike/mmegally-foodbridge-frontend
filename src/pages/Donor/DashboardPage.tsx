@@ -40,8 +40,23 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import PeopleIcon from '@mui/icons-material/People';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 
-// Import API client (assuming you'll set this up separately)
-// import { api } from '../api/client';
+// Import API client
+import { Api } from '../../services/Api';
+
+// Initialize API client
+const api = new Api({ 
+  baseUrl: 'http://localhost:5266',
+  securityWorker: (token) => {
+    if (token) {
+      return {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      };
+    }
+    return {};
+  }
+});
 
 // Helper function to format dates
 const formatDate = (date) => {
@@ -78,87 +93,12 @@ const formatRelativeTime = (date) => {
   }
 };
 
-// Mock data for demonstration
-const mockStores = [
-  {
-    id: '1',
-    name: 'Downtown Restaurant',
-    latitude: 37.7749,
-    longitude: -122.4194,
-    createdAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), // 90 days ago
-    donorId: 'user123',
-    activeItems: 3,
-    claimedItems: 5,
-    totalDonated: 45
-  },
-  {
-    id: '2',
-    name: 'Midtown Bakery',
-    latitude: 37.7833,
-    longitude: -122.4167,
-    createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000), // 60 days ago
-    donorId: 'user123',
-    activeItems: 2,
-    claimedItems: 0,
-    totalDonated: 18
-  },
-  {
-    id: '3',
-    name: 'Westside Grocery',
-    latitude: 37.7694,
-    longitude: -122.4862,
-    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
-    donorId: 'user123',
-    activeItems: 0,
-    claimedItems: 1,
-    totalDonated: 7
-  }
-];
-
-const mockUser = {
-  username: 'BusinessUser',
-  createdAt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000), // 120 days ago
-  totalDonations: 70,
-  totalClaimed: 54
-};
-
-const mockRecentActivity = [
-  {
-    id: '1',
-    type: 'donation',
-    itemName: 'Fresh Bread',
-    storeName: 'Downtown Restaurant',
-    date: new Date(Date.now() - 2 * 60 * 60 * 1000) // 2 hours ago
-  },
-  {
-    id: '2',
-    type: 'claim',
-    itemName: 'Fruit Selection',
-    storeName: 'Midtown Bakery',
-    claimerName: 'Sarah',
-    date: new Date(Date.now() - 8 * 60 * 60 * 1000) // 8 hours ago
-  },
-  {
-    id: '3',
-    type: 'pickup',
-    itemName: 'Sandwich Platters',
-    storeName: 'Downtown Restaurant',
-    claimerName: 'John',
-    date: new Date(Date.now() - 24 * 60 * 60 * 1000) // 1 day ago
-  },
-  {
-    id: '4',
-    type: 'donation',
-    itemName: 'Prepared Meals',
-    storeName: 'Downtown Restaurant',
-    date: new Date(Date.now() - 30 * 60 * 60 * 1000) // 30 hours ago
-  }
-];
+// We'll derive activity data from food items instead of using mock data
 
 const DonorDashboardPage = () => {
   const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
-  const [stores, setStores] = useState([]);
+  const [store, setStore] = useState(null);
   const [user, setUser] = useState(null);
   const [recentActivity, setRecentActivity] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -166,7 +106,6 @@ const DonorDashboardPage = () => {
   
   // Menu state
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
-  const [selectedStoreId, setSelectedStoreId] = useState(null);
   
   // Snackbar
   const [snackbar, setSnackbar] = useState({
@@ -176,24 +115,107 @@ const DonorDashboardPage = () => {
   });
 
   useEffect(() => {
-    // Fetch donor data, stores, and activity
+    // Check if token exists
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      navigate('/donor/login');
+      return;
+    }
+
+    // Set token for API calls
+    api.setSecurityData(token);
+
+    // Fetch donor data and store
     const fetchData = async () => {
       try {
-        // In a real implementation, you would use your API client
-        // Mock data for demonstration
-        setUser(mockUser);
-        setStores(mockStores);
-        setRecentActivity(mockRecentActivity);
+        setLoading(true);
+        
+        // Get store data from API
+        const storeResponse = await api.api.donorStoreList({
+          secure: true,
+          format: 'json'
+        });
+        
+        if (storeResponse.ok) {
+          const storeData = await storeResponse.json();
+          
+          // Set basic user data from localStorage
+          setUser({
+            username: localStorage.getItem('username') || 'User',
+            createdAt: storeData.createdAt || new Date(),
+            // Calculate totals - assuming we need to track these
+            totalDonations: storeData.foodItems ? storeData.foodItems.length : 0,
+            totalClaimed: storeData.foodItems ? storeData.foodItems.filter(item => item.isClaimed).length : 0
+          });
+          
+          // Add calculated properties to store
+          const enrichedStore = {
+            ...storeData,
+            activeItems: storeData.foodItems ? storeData.foodItems.filter(item => !item.isClaimed).length : 0,
+            claimedItems: storeData.foodItems ? storeData.foodItems.filter(item => item.isClaimed).length : 0,
+            totalDonated: storeData.foodItems ? storeData.foodItems.length : 0
+          };
+          
+          setStore(enrichedStore);
+          
+          // Generate activity data from food items
+          if (storeData.foodItems && storeData.foodItems.length > 0) {
+            const activityItems = [];
+            
+            // Process food items to create activity entries
+            storeData.foodItems.forEach(item => {
+              // Add donation activity (when the item was created)
+              activityItems.push({
+                id: `donation-${item.id}`,
+                type: 'donation',
+                itemName: item.name,
+                storeName: storeData.name,
+                date: new Date(item.createdAt)
+              });
+              
+              // If item is claimed, add a claim activity
+              if (item.isClaimed && item.claimCode) {
+                activityItems.push({
+                  id: `claim-${item.id}`,
+                  type: 'claim',
+                  itemName: item.name,
+                  storeName: storeData.name,
+                  // Using "Recipient" as claimer name since we don't have the actual name
+                  claimerName: "Recipient",
+                  date: new Date(item.createdAt) // Using createdAt as a proxy since we don't have claimedAt
+                });
+              }
+            });
+            
+            // Sort by date, most recent first
+            activityItems.sort((a, b) => b.date - a.date);
+            
+            // Take the most recent 5 activities
+            setRecentActivity(activityItems.slice(0, 5));
+          } else {
+            setRecentActivity([]);
+          }
+        } else {
+          // If store not found, we assume user doesn't have a store yet
+          setStore(null);
+          setUser({
+            username: localStorage.getItem('username') || 'User',
+            createdAt: new Date(),
+            totalDonations: 0,
+            totalClaimed: 0
+          });
+          setRecentActivity([]);
+        }
       } catch (err) {
+        console.error('Failed to load dashboard data:', err);
         setError('Failed to load dashboard data. Please try again later.');
-        console.error(err);
       } finally {
         setLoading(false);
       }
     };
     
     fetchData();
-  }, []);
+  }, [navigate]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -201,26 +223,27 @@ const DonorDashboardPage = () => {
 
   const handleLogout = () => {
     // Clear local storage
-    // localStorage.removeItem('token');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('username');
     navigate('/donor/login');
   };
 
-  const handleStoreMenuOpen = (event, storeId) => {
+  const handleStoreMenuOpen = (event) => {
     setMenuAnchorEl(event.currentTarget);
-    setSelectedStoreId(storeId);
   };
 
   const handleStoreMenuClose = () => {
     setMenuAnchorEl(null);
-    setSelectedStoreId(null);
   };
 
-  const handleViewStore = (storeId) => {
+  const handleViewStore = () => {
     handleStoreMenuClose();
-    navigate(`/donor/store/${storeId}`);
+    if (store) {
+      navigate(`/donor/store/${store.id}`);
+    }
   };
 
-  const handleEditStore = (storeId) => {
+  const handleEditStore = () => {
     handleStoreMenuClose();
     // Navigate to store edit page or open dialog
     setSnackbar({
@@ -230,27 +253,8 @@ const DonorDashboardPage = () => {
     });
   };
 
-  const handleDeleteStore = (storeId) => {
-    handleStoreMenuClose();
-    
-    // In a real implementation, you would call your API
-    // For now, just filter out the store
-    setStores(stores.filter(store => store.id !== storeId));
-    
-    setSnackbar({
-      open: true,
-      message: 'Store removed successfully',
-      severity: 'success'
-    });
-  };
-
   const handleAddStore = () => {
-    // For now, just show a notification
-    setSnackbar({
-      open: true,
-      message: 'Add store functionality will be implemented soon',
-      severity: 'info'
-    });
+    navigate('/donor/add-store');
   };
 
   const handleCloseSnackbar = () => {
@@ -261,6 +265,7 @@ const DonorDashboardPage = () => {
   };
 
   const getInitials = (name) => {
+    if (!name) return "ST";
     return name
       .split(' ')
       .map(part => part[0])
@@ -302,8 +307,7 @@ const DonorDashboardPage = () => {
           sx={{ backgroundColor: 'primary.dark' }}
         >
           <Tab icon={<RestaurantIcon />} label="OVERVIEW" />
-          <Tab icon={<StoreIcon />} label="MY STORES" />
-          <Tab icon={<BarChartIcon />} label="IMPACT" />
+          {/* <Tab icon={<StoreIcon />} label="MY STORE" /> */}
         </Tabs>
       </AppBar>
 
@@ -321,7 +325,7 @@ const DonorDashboardPage = () => {
                     Total Donations
                   </Typography>
                   <Typography variant="h3" color="primary">
-                    {user?.totalDonations}
+                    {user?.totalDonations || 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Food items donated since joining
@@ -336,7 +340,7 @@ const DonorDashboardPage = () => {
                     Claimed Items
                   </Typography>
                   <Typography variant="h3" color="secondary">
-                    {user?.totalClaimed}
+                    {user?.totalClaimed || 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Food items claimed by recipients
@@ -351,7 +355,7 @@ const DonorDashboardPage = () => {
                     Active Listings
                   </Typography>
                   <Typography variant="h3" color="info.main">
-                    {stores.reduce((sum, store) => sum + store.activeItems, 0)}
+                    {store?.activeItems || 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Items currently available for claim
@@ -421,47 +425,32 @@ const DonorDashboardPage = () => {
                 </Typography>
                 
                 <List>
-                  <ListItem>
-                    <Button 
-                      fullWidth 
-                      variant="contained" 
-                      color="primary"
-                      startIcon={<AddIcon />}
-                      onClick={handleAddStore}
-                    >
-                      Add New Store
-                    </Button>
-                  </ListItem>
-                  <ListItem>
-                    <Button 
-                      fullWidth 
-                      variant="outlined" 
-                      color="primary"
-                      onClick={() => {
-                        if (stores.length > 0) {
-                          navigate(`/donor/store/${stores[0].id}`);
-                        } else {
-                          setSnackbar({
-                            open: true,
-                            message: 'Please add a store first',
-                            severity: 'info'
-                          });
-                        }
-                      }}
-                    >
-                      Add Food Item
-                    </Button>
-                  </ListItem>
-                  <ListItem>
-                    <Button 
-                      fullWidth 
-                      variant="outlined" 
-                      color="secondary"
-                      onClick={() => navigate('/browse')}
-                    >
-                      View Public Listings
-                    </Button>
-                  </ListItem>
+                  {!store && (
+                    <ListItem>
+                      <Button 
+                        fullWidth 
+                        variant="contained" 
+                        color="primary"
+                        startIcon={<AddIcon />}
+                        onClick={handleAddStore}
+                      >
+                        Add Your Store
+                      </Button>
+                    </ListItem>
+                  )}
+                  {store && (
+                    <ListItem>
+                      <Button 
+                        fullWidth 
+                        variant="contained" 
+                        color="primary"
+                        startIcon={<AddIcon />}
+                        onClick={() => navigate(`/donor/store/${store.id}`)}
+                      >
+                        Add Food Item
+                      </Button>
+                    </ListItem>
+                  )}
                 </List>
               </Paper>
             </Grid>
@@ -469,24 +458,26 @@ const DonorDashboardPage = () => {
         </Box>
       )}
 
-      {/* My Stores Tab */}
+      {/* My Store Tab */}
       {tabValue === 1 && (
         <Box sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h5">My Stores</Typography>
-            <Button 
-              variant="contained" 
-              startIcon={<AddIcon />}
-              onClick={handleAddStore}
-            >
-              Add New Store
-            </Button>
+            <Typography variant="h5">My Store</Typography>
+            {!store && (
+              <Button 
+                variant="contained" 
+                startIcon={<AddIcon />}
+                onClick={handleAddStore}
+              >
+                Add Store
+              </Button>
+            )}
           </Box>
 
-          {stores.length === 0 ? (
+          {!store ? (
             <Paper sx={{ p: 4, textAlign: 'center' }}>
               <Typography variant="body1" color="text.secondary" paragraph>
-                You haven't added any stores yet. Add your first store to start donating food.
+                You haven't added a store yet. Add your store to start donating food.
               </Typography>
               <Button
                 variant="contained"
@@ -494,171 +485,89 @@ const DonorDashboardPage = () => {
                 startIcon={<AddIcon />}
                 onClick={handleAddStore}
               >
-                Add Your First Store
+                Add Your Store
               </Button>
             </Paper>
           ) : (
             <Grid container spacing={3}>
-              {stores.map((store) => (
-                <Grid item xs={12} md={6} key={store.id}>
-                  <Card elevation={3}>
-                    <CardHeader
-                      avatar={
-                        <Avatar sx={{ bgcolor: 'primary.main' }}>
-                          {getInitials(store.name)}
-                        </Avatar>
-                      }
-                      action={
-                        <>
-                          <IconButton 
-                            aria-label="store menu" 
-                            onClick={(e) => handleStoreMenuOpen(e, store.id)}
-                          >
-                            <MoreVertIcon />
-                          </IconButton>
-                          <Menu
-                            anchorEl={menuAnchorEl}
-                            open={Boolean(menuAnchorEl) && selectedStoreId === store.id}
-                            onClose={handleStoreMenuClose}
-                          >
-                            <MenuItem onClick={() => handleViewStore(store.id)}>
-                              View Store
-                            </MenuItem>
-                            <MenuItem onClick={() => handleEditStore(store.id)}>
-                              Edit Store
-                            </MenuItem>
-                            <MenuItem onClick={() => handleDeleteStore(store.id)}>
-                              Delete Store
-                            </MenuItem>
-                          </Menu>
-                        </>
-                      }
-                      title={store.name}
-                      subheader={`Added on ${formatDate(store.createdAt).split(',')[0]}`}
-                    />
-                    <CardContent>
-                      <Grid container spacing={2}>
-                        <Grid item xs={4} textAlign="center">
-                          <Typography variant="h5" color="primary">
-                            {store.activeItems}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Active
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={4} textAlign="center">
-                          <Typography variant="h5" color="secondary">
-                            {store.claimedItems}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Claimed
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={4} textAlign="center">
-                          <Typography variant="h5">
-                            {store.totalDonated}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Total
-                          </Typography>
-                        </Grid>
+              <Grid item xs={12}>
+                <Card elevation={3}>
+                  <CardHeader
+                    avatar={
+                      <Avatar sx={{ bgcolor: 'primary.main' }}>
+                        {getInitials(store.name)}
+                      </Avatar>
+                    }
+                    action={
+                      <>
+                        <IconButton 
+                          aria-label="store menu" 
+                          onClick={handleStoreMenuOpen}
+                        >
+                          <MoreVertIcon />
+                        </IconButton>
+                        <Menu
+                          anchorEl={menuAnchorEl}
+                          open={Boolean(menuAnchorEl)}
+                          onClose={handleStoreMenuClose}
+                        >
+                          <MenuItem onClick={handleViewStore}>
+                            View Store
+                          </MenuItem>
+                          <MenuItem onClick={handleEditStore}>
+                            Edit Store
+                          </MenuItem>
+                        </Menu>
+                      </>
+                    }
+                    title={store.name}
+                    subheader={`Added on ${formatDate(store.createdAt).split(',')[0]}`}
+                  />
+                  <CardContent>
+                    <Grid container spacing={2}>
+                      <Grid item xs={4} textAlign="center">
+                        <Typography variant="h5" color="primary">
+                          {store.activeItems}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Active
+                        </Typography>
                       </Grid>
-                    </CardContent>
-                    <CardActions>
-                      <Button 
-                        size="small" 
-                        endIcon={<ArrowForwardIcon />}
-                        onClick={() => navigate(`/donor/store/${store.id}`)}
-                        sx={{ ml: 'auto' }}
-                      >
-                        Manage Listings
-                      </Button>
-                    </CardActions>
-                  </Card>
-                </Grid>
-              ))}
+                      <Grid item xs={4} textAlign="center">
+                        <Typography variant="h5" color="secondary">
+                          {store.claimedItems}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Claimed
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={4} textAlign="center">
+                        <Typography variant="h5">
+                          {store.totalDonated}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Total
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                      Location: {store.latitude.toFixed(4)}, {store.longitude.toFixed(4)}
+                    </Typography>
+                  </CardContent>
+                  <CardActions>
+                    <Button 
+                      size="small" 
+                      endIcon={<ArrowForwardIcon />}
+                      onClick={() => navigate(`/donor/store/${store.id}`)}
+                      sx={{ ml: 'auto' }}
+                    >
+                      Manage Listings
+                    </Button>
+                  </CardActions>
+                </Card>
+              </Grid>
             </Grid>
           )}
-        </Box>
-      )}
-
-      {/* Impact Tab */}
-      {tabValue === 2 && (
-        <Box sx={{ p: 3 }}>
-          <Paper elevation={3} sx={{ p: 3 }}>
-            <Typography variant="h5" gutterBottom>Your Impact</Typography>
-            
-            <Box sx={{ my: 4, textAlign: 'center' }}>
-              <Typography variant="h2" color="primary" gutterBottom>
-                {user?.totalDonations}
-              </Typography>
-              <Typography variant="h5" gutterBottom>
-                Total Food Items Donated
-              </Typography>
-              <Typography variant="body1" color="text.secondary" paragraph>
-                Thank you for helping reduce food waste and hunger in your community!
-              </Typography>
-              
-              <Box sx={{ my: 4 }}>
-                <Grid container spacing={4}>
-                  <Grid item xs={12} md={4}>
-                    <Paper elevation={2} sx={{ p: 3, bgcolor: 'primary.light', color: 'white' }}>
-                      <Typography variant="h4" gutterBottom>
-                        {Math.round(user?.totalDonations * 0.75)} lbs
-                      </Typography>
-                      <Typography variant="body1">
-                        Estimated Food Saved
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Paper elevation={2} sx={{ p: 3, bgcolor: 'secondary.light', color: 'white' }}>
-                      <Typography variant="h4" gutterBottom>
-                        {Math.round(user?.totalClaimed * 2.5)}
-                      </Typography>
-                      <Typography variant="body1">
-                        Estimated Meals Provided
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Paper elevation={2} sx={{ p: 3, bgcolor: 'success.light', color: 'white' }}>
-                      <Typography variant="h4" gutterBottom>
-                        {Math.round(user?.totalDonations * 2.8)} kg
-                      </Typography>
-                      <Typography variant="body1">
-                        CO₂ Emissions Prevented
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                </Grid>
-              </Box>
-              
-              <Typography variant="body1" paragraph sx={{ mt: 4 }}>
-                Food waste is responsible for approximately 8% of global greenhouse gas emissions. By donating your surplus food, you're not only helping feed those in need but also making a significant environmental impact.
-              </Typography>
-              
-              <Box sx={{ mt: 3 }}>
-                <Button 
-                  variant="contained" 
-                  color="primary"
-                  onClick={() => {
-                    if (stores.length > 0) {
-                      navigate(`/donor/store/${stores[0].id}`);
-                    } else {
-                      setSnackbar({
-                        open: true,
-                        message: 'Please add a store first',
-                        severity: 'info'
-                      });
-                    }
-                  }}
-                >
-                  Donate More Food
-                </Button>
-              </Box>
-            </Box>
-          </Paper>
         </Box>
       )}
 

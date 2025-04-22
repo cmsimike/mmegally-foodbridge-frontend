@@ -412,6 +412,15 @@ export class Api<SecurityDataType extends unknown> extends HttpClient<SecurityDa
         ...params,
       }),
 
+      donorFoodMarkPickedUpCreate: (id: string, params: RequestParams = {}) =>
+        this.request<FoodItem, any>({
+          path: `/api/Donor/food/${id}/pickup`,
+          method: "PUT",
+          type: ContentType.Json,
+          format: "json",
+          ...params,
+        }),
+         
     /**
      * No description
      *
