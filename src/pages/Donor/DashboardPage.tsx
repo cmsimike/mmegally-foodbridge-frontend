@@ -94,7 +94,10 @@ const formatRelativeTime = (date) => {
 };
 
 // We'll derive activity data from food items instead of using mock data
-
+// Helper function to check if a date is in the future
+const isDateInFuture = (date: string): boolean => {
+  return new Date(date) > new Date();
+};
 const DonorDashboardPage = () => {
   const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
@@ -151,7 +154,7 @@ const DonorDashboardPage = () => {
           // Add calculated properties to store
           const enrichedStore = {
             ...storeData,
-            activeItems: storeData.foodItems ? storeData.foodItems.filter(item => !item.isClaimed).length : 0,
+            activeItems: storeData.foodItems ? storeData.foodItems.filter(item => !item.isClaimed && isDateInFuture(item.expirationDate)).length : 0,
             claimedItems: storeData.foodItems ? storeData.foodItems.filter(item => item.isClaimed).length : 0,
             totalDonated: storeData.foodItems ? storeData.foodItems.length : 0
           };
@@ -447,7 +450,7 @@ const DonorDashboardPage = () => {
                         startIcon={<AddIcon />}
                         onClick={() => navigate(`/donor/store/${store.id}`)}
                       >
-                        Add Food Item
+                        Go to Store
                       </Button>
                     </ListItem>
                   )}
