@@ -15,9 +15,34 @@ import RestaurantIcon from '@mui/icons-material/Restaurant';
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket';
 import SecurityIcon from '@mui/icons-material/Security';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import ImageCarousel from './components/ImageCarousel';
 
 const HomePage = () => {
   const navigate = useNavigate();
+
+
+  const carouselImages = [
+    {
+      url: '/images/carousel/image1.jpg', // These paths will need to be updated
+      caption: 'Bringing Communities Together',
+      description: 'Local restaurants providing meals to families in need'
+    },
+    {
+      url: '/images/carousel/image2.jpg',
+      caption: 'Volunteers Making a Difference',
+      description: 'Our amazing volunteers helping distribute food donations'
+    },
+    {
+      url: '/images/carousel/image3.jpg',
+      caption: 'Supporting Families',
+      description: 'Fresh produce reaching those who need it most'
+    },
+    {
+      url: '/images/carousel/image4.jpg',
+      caption: 'Restaurants Fighting Food Waste',
+      description: 'Local businesses donating surplus food at the end of the day'
+    }
+  ];
 
   return (
     <div>
@@ -30,6 +55,9 @@ const HomePage = () => {
           Connecting surplus food with people who need it most
         </Typography>
       </Box>
+
+      {/* Image Carousel */}
+      <ImageCarousel images={carouselImages} autoPlayInterval={6000} />
 
       {/* Two columns layout */}
       <Grid container spacing={4} sx={{ mb: 5 }}>
